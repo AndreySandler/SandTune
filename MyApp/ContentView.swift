@@ -76,15 +76,33 @@ struct ContentView: View {
         return closestMatch
     }
     
+    private var tuningInstruction: String {
+        let difference = detectedFrequency - closestString.frequency
+        
+        if abs(difference) < 0.5 {
+            return "In Tune"
+        }
+        if difference < 0 {
+            return "Tune Up"
+        }
+        return "Tune Down"
+    }
+    
     var body: some View {
         VStack(spacing: 12) {
-            Text("Detected frequency")
+            Text(
+                "Detected frequency"
+            )
             
-            Text("\(String(detectedFrequency)) Hz")
+            Text(
+                "\(String(detectedFrequency)) Hz"
+            )
             
             Text(
                 "Closest string is: \(closestString.note)\(closestString.octave)"
             )
+            
+            Text(tuningInstruction)
             
             HStack(spacing: 24) {
                 Button("-1 Hz") {
