@@ -9,8 +9,9 @@ struct GuitarString: Identifiable {
 }
 
 struct ContentView: View {
+    @State private var detectedFrequency = 82.41
     
-    // Standart tuning from sixth string to first.
+    // Standard tuning from sixth string to first.
     let guitarStrings = [
         GuitarString(
             id: 6,
@@ -56,8 +57,44 @@ struct ContentView: View {
         )
     ]
     
+    // Finds the string closest to the detected frequency.
+    private var closestString: GuitarString {
+        var closestMatch = guitarStrings[0]
+        for guitarString in guitarStrings {
+            let currentDifference = abs(
+                guitarString.frequency - detectedFrequency
+            )
+            
+            let closestDifference = abs(
+                closestMatch.frequency - detectedFrequency
+            )
+            
+            if currentDifference < closestDifference {
+                closestMatch = guitarString
+            }
+        }
+        return closestMatch
+    }
+    
     var body: some View {
         VStack(spacing: 12) {
+            Text("Detected frequency")
+            
+            Text("\(String(detectedFrequency)) Hz")
+            
+            Text(
+                "Closest string is: \(closestString.note)\(closestString.octave)"
+            )
+            
+            HStack(spacing: 24) {
+                Button("-1 Hz") {
+                    detectedFrequency -= 1
+                }
+                Button("+1 Hz") {
+                    detectedFrequency += 1
+                }
+            }
+            
             ForEach(guitarStrings) { guitarString in
                 VStack(spacing: 4) {
                     Text("\(guitarString.note)\(guitarString.octave)")
