@@ -18,8 +18,11 @@ struct ContentView: View {
     )
     
     var body: some View {
-        Text("/(low")
-            .padding()
+        VStack(spacing: 12) {
+            Text("\(lowEString.note)\(lowEString.octave)")
+            Text("String \(lowEString.number)")
+            Text("\(String(lowEString.frequency)) Hz")
+        }
     }
 }
 
