@@ -71,6 +71,8 @@ final class PitchDetector {
                 sumOfSquares / Float(samples.count)
             )
             
+            // Ignore quiet room noise so the UI does not report a wrong string
+            // when the instrument is not being played.
             guard rootMeanSquare > 0.001 else {
                 return
             }
@@ -91,12 +93,13 @@ final class PitchDetector {
                 silenceTask?.cancel()
                 silenceTask = Task { @MainActor [weak self] in
                     do {
-                        try await Task.sleep(for: .seconds(1))
+                        try await Task.sleep(for: .milliseconds(1_200))
                     } catch {
                         return
                     }
 
                     self?.isDetectingSound = false
+                    self?.detectedFrequency = 0
                 }
 
                 if detectedFrequency == 0 {
@@ -104,20 +107,15 @@ final class PitchDetector {
                     return
                 }
 
-                let centsDifference = abs(
-                    1200 * log2(frequency / detectedFrequency)
+                // Smooth in the logarithmic pitch domain so movement in cents
+                // stays even across the guitar's full frequency range.
+                let smoothingFactor = 0.18
+                let frequencyRatio = frequency / detectedFrequency
+
+                detectedFrequency *= pow(
+                    frequencyRatio,
+                    smoothingFactor
                 )
-
-                if centsDifference > 50 {
-                    detectedFrequency = frequency
-                    return
-                }
-
-                let smoothingFactor = 0.35
-
-                detectedFrequency =
-                    detectedFrequency * (1 - smoothingFactor)
-                    + frequency * smoothingFactor
             }
         }
         
@@ -144,54 +142,93 @@ final class PitchDetector {
     ) -> Double? {
         let minimumFrequency = 70.0
         let maximumFrequency = 400.0
-        
+        let threshold: Float = 0.25
+
         let minimumLag = Int(sampleRate / maximumFrequency)
-        
         let maximumLag = min(
             Int(sampleRate / minimumFrequency),
-            samples.count - 1
+            samples.count / 2
         )
-        
+
         guard minimumLag < maximumLag else {
             return nil
         }
-        
-        var bestLag = 0
-        var bestCorrelation: Float = 0
-        
-        for lag in minimumLag...maximumLag {
-            var correlation: Float = 0
-            var firstEnergy: Float = 0
-            var secondEnergy: Float = 0
-            
+
+        var difference = Array(
+            repeating: Float.zero,
+            count: maximumLag + 1
+        )
+
+        for lag in 1...maximumLag {
+            var sum: Float = 0
+
             for index in 0..<(samples.count - lag) {
-                let firstSample = samples[index]
-                let secondSample = samples[index + lag]
-                
-                correlation += firstSample * secondSample
-                firstEnergy += firstSample * firstSample
-                secondEnergy += secondSample * secondSample
+                let delta = samples[index] - samples[index + lag]
+                sum += delta * delta
             }
-            
-            let normalization = sqrt(firstEnergy * secondEnergy)
-            
-            guard normalization > 0 else {
-                continue
-            }
-            
-            let normalizedCorrelation = correlation / normalization
-            
-            if normalizedCorrelation > bestCorrelation {
-                bestCorrelation = normalizedCorrelation
-                bestLag = lag
-            }
+
+            difference[lag] = sum
         }
 
-        guard bestLag > 0, bestCorrelation > 0.45 else {
+        var normalizedDifference = Array(
+            repeating: Float(1),
+            count: maximumLag + 1
+        )
+        var runningSum: Float = 0
+
+        for lag in 1...maximumLag {
+            runningSum += difference[lag]
+
+            guard runningSum > 0 else {
+                continue
+            }
+
+            normalizedDifference[lag] =
+                difference[lag] * Float(lag) / runningSum
+        }
+
+        var candidateLag: Int?
+        var lag = minimumLag
+
+        while lag <= maximumLag {
+            if normalizedDifference[lag] < threshold {
+                while lag < maximumLag,
+                      normalizedDifference[lag + 1]
+                        < normalizedDifference[lag] {
+                    lag += 1
+                }
+
+                candidateLag = lag
+                break
+            }
+
+            lag += 1
+        }
+
+        guard let candidateLag else {
             return nil
         }
 
-        return sampleRate / Double(bestLag)
+        var refinedLag = Double(candidateLag)
+
+        if candidateLag > minimumLag,
+           candidateLag < maximumLag {
+            let previous = Double(
+                normalizedDifference[candidateLag - 1]
+            )
+            let current = Double(
+                normalizedDifference[candidateLag]
+            )
+            let next = Double(
+                normalizedDifference[candidateLag + 1]
+            )
+            let denominator = previous - 2 * current + next
+
+            if abs(denominator) > .ulpOfOne {
+                refinedLag += 0.5 * (previous - next) / denominator
+            }
+        }
+
+        return sampleRate / refinedLag
     }
 }
-

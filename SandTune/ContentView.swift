@@ -12,6 +12,7 @@ struct GuitarString: Identifiable {
 private struct TuningScale: View {
     let centsOffset: Double
     let color: Color
+    let showsMarker: Bool
 
     private var clampedOffset: Double {
         min(max(centsOffset, -50), 50)
@@ -45,15 +46,21 @@ private struct TuningScale: View {
                 }
                 .padding(.horizontal, horizontalInset)
 
-                Circle()
-                    .fill(color)
-                    .stroke(.white.opacity(0.9), lineWidth: 2)
-                    .shadow(color: color.opacity(0.55), radius: 8)
-                    .frame(width: 22, height: 22)
-                    .position(
-                        x: markerX,
-                        y: geometry.size.height / 2
-                    )
+                if showsMarker {
+                    Circle()
+                        .fill(color)
+                        .stroke(.white.opacity(0.9), lineWidth: 2)
+                        .shadow(color: color.opacity(0.55), radius: 8)
+                        .frame(width: 22, height: 22)
+                        .position(
+                            x: markerX,
+                            y: geometry.size.height / 2
+                        )
+                        .animation(
+                            .smooth(duration: 0.18),
+                            value: clampedOffset
+                        )
+                }
             }
         }
         .frame(height: 28)
@@ -71,9 +78,10 @@ struct ContentView: View {
     // @State private var's
     @State private var pitchDetector = PitchDetector()
     @State private var microphonePermissionGranted: Bool?
-    @State private var confirmedTunedStringID: Int?
+    @State private var tunedStringIDs: Set<Int> = []
     @State private var selectedStringID = 6
     @State private var audioStartFailed = false
+    @State private var isShowingTipJar = false
     
     // Private var's
     private var detectedFrequency: Double {
@@ -153,22 +161,8 @@ struct ContentView: View {
         return "Tune Down"
     }
 
-    private var confirmedTunedString: GuitarString? {
-        guard let confirmedTunedStringID else {
-            return nil
-        }
-
-        return guitarStrings.first {
-            $0.id == confirmedTunedStringID
-        }
-    }
-
-    private var isCurrentStringConfirmed: Bool {
-        confirmedTunedStringID == selectedString.id
-    }
-
     private var tuningColor: Color {
-        if isCurrentStringConfirmed || abs(centsOffset) <= 5 {
+        if abs(centsOffset) <= 5 {
             return .green
         }
 
@@ -176,7 +170,7 @@ struct ContentView: View {
     }
 
     private func stringColor(for guitarString: GuitarString) -> Color {
-        if confirmedTunedStringID == guitarString.id {
+        if tunedStringIDs.contains(guitarString.id) {
             return .green
         }
 
@@ -218,6 +212,17 @@ struct ContentView: View {
                         .foregroundStyle(.white)
 
                     Spacer()
+
+                    Button {
+                        isShowingTipJar = true
+                    } label: {
+                        Image(systemName: "heart.fill")
+                            .foregroundStyle(.pink)
+                            .frame(width: 36, height: 36)
+                            .background(.white.opacity(0.08), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Leave a tip")
 
                     Text("STANDARD")
                         .font(.caption.weight(.semibold))
@@ -292,7 +297,8 @@ struct ContentView: View {
 
                     TuningScale(
                         centsOffset: centsOffset,
-                        color: tuningColor
+                        color: tuningColor,
+                        showsMarker: true
                     )
 
                     HStack {
@@ -303,47 +309,39 @@ struct ContentView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.white.opacity(0.5))
 
-                    Text(
-                        isCurrentStringConfirmed
-                            ? "String tuned — move on"
-                            : tuningInstruction
-                    )
-                    .font(.headline)
-                    .foregroundStyle(tuningColor)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(
-                        tuningColor.opacity(0.12),
-                        in: Capsule()
-                    )
-                } else if let confirmedTunedString {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 42))
-                        .foregroundStyle(.green)
-
-                    Text(
-                        "\(confirmedTunedString.note)\(confirmedTunedString.octave)"
-                    )
-                    .font(
-                        .system(
-                            size: 112,
-                            weight: .bold,
-                            design: .rounded
-                        )
-                    )
-                    .foregroundStyle(.green)
-
-                    Text("String tuned — move on")
+                    Text(tuningInstruction)
                         .font(.headline)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(tuningColor)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(
+                            tuningColor.opacity(0.12),
+                            in: Capsule()
+                        )
                 } else {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.white.opacity(0.35))
-
-                    Text("Play a string")
-                        .font(.title2.bold())
+                    Text("\(selectedString.note)\(selectedString.octave)")
+                        .font(
+                            .system(
+                                size: 112,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
                         .foregroundStyle(.white)
+
+                    TuningScale(
+                        centsOffset: 0,
+                        color: .white,
+                        showsMarker: false
+                    )
+
+                    HStack {
+                        Text("−50")
+                        Spacer()
+                        Text("+50")
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.5))
                 }
 
                 Spacer()
@@ -353,13 +351,17 @@ struct ContentView: View {
                         ForEach(guitarStrings) { guitarString in
                             Button {
                                 selectedStringID = guitarString.id
-                                confirmedTunedStringID = nil
                             } label: {
-                                Text(guitarString.note)
-                                    .font(.title3.bold())
-                                    .foregroundStyle(
-                                        stringColor(for: guitarString)
-                                    )
+                                VStack(spacing: 2) {
+                                    Text(guitarString.note)
+                                        .font(.title3.bold())
+
+                                    if tunedStringIDs.contains(guitarString.id) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.caption2)
+                                    }
+                                }
+                                    .foregroundStyle(stringColor(for: guitarString))
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 48)
                                     .background(
@@ -374,6 +376,11 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel(
                                 "String \(guitarString.number), \(guitarString.note)"
+                            )
+                            .accessibilityValue(
+                                tunedStringIDs.contains(guitarString.id)
+                                    ? "Tuned"
+                                    : "Not tuned"
                             )
                         }
                     }
@@ -390,6 +397,9 @@ struct ContentView: View {
             .padding(24)
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $isShowingTipJar) {
+            TipJarView()
+        }
         .task {
             let permissionGranted =
                 await pitchDetector.requestMicrophonePermission()
@@ -408,7 +418,7 @@ struct ContentView: View {
             }
 
             if abs(centsOffset) <= 5 {
-                confirmedTunedStringID = selectedStringID
+                tunedStringIDs.insert(selectedStringID)
             }
         }
         .onDisappear {
