@@ -11,7 +11,9 @@ import Observation
 @Observable
 final class PitchDetector {
     private let audioEngine = AVAudioEngine()
+    private var silenceTask: Task<Void, Never>?
     private(set) var detectedFrequency = 0.0
+    private(set) var isDetectingSound = false
     
     func requestMicrophonePermission() async -> Bool {
         await AVAudioApplication.requestRecordPermission()
@@ -85,6 +87,18 @@ final class PitchDetector {
                     return
                 }
 
+                isDetectingSound = true
+                silenceTask?.cancel()
+                silenceTask = Task { @MainActor [weak self] in
+                    do {
+                        try await Task.sleep(for: .seconds(1))
+                    } catch {
+                        return
+                    }
+
+                    self?.isDetectingSound = false
+                }
+
                 if detectedFrequency == 0 {
                     detectedFrequency = frequency
                     return
@@ -109,6 +123,19 @@ final class PitchDetector {
         
         audioEngine.prepare()
         try audioEngine.start()
+    }
+    
+    func stop() {
+        silenceTask?.cancel()
+        silenceTask = nil
+        isDetectingSound = false
+
+        guard audioEngine.isRunning else {
+            return
+        }
+
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
     }
     
     private nonisolated func estimateFrequency(

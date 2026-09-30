@@ -106,23 +106,25 @@ struct ContentView: View {
     
     var body: some View {
         VStack(spacing: 12) {
-            Text(
-                "Detected frequency"
-            )
-            
-            Text(
-                "\(String(detectedFrequency)) Hz"
-            )
-            
-            Text(
-                "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
-            )
-            
-            Text(
-                "Closest string is: \(closestString.note)\(closestString.octave)"
-            )
-            
-            Text(tuningInstruction)
+            if pitchDetector.isDetectingSound {
+                Text("Detected frequency")
+
+                Text(
+                    "\(String(detectedFrequency)) Hz"
+                )
+
+                Text(
+                    "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
+                )
+
+                Text(
+                    "Closest string is: \(closestString.note)\(closestString.octave)"
+                )
+
+                Text(tuningInstruction)
+            } else {
+                Text("Play a string")
+            }
             
             ForEach(guitarStrings) { guitarString in
                 VStack(spacing: 4) {
@@ -144,6 +146,9 @@ struct ContentView: View {
             } catch {
                 print("Failed to start pitch detector: \(error)")
             }
+        }
+        .onDisappear {
+            pitchDetector.stop()
         }
     }
 }
