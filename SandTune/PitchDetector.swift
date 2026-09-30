@@ -19,12 +19,12 @@ final class PitchDetector {
     
     private func configureAudioSession() throws {
         let audioSession = AVAudioSession.sharedInstance()
-
+        
         try audioSession.setCategory(
             .record,
             mode: .measurement
         )
-
+        
         try audioSession.setActive(true)
     }
     
@@ -32,7 +32,7 @@ final class PitchDetector {
         guard !audioEngine.isRunning else {
             return
         }
-
+        
         try configureAudioSession()
         
         let inputNode = audioEngine.inputNode
@@ -42,8 +42,37 @@ final class PitchDetector {
             onBus: 0,
             bufferSize: 4096,
             format: outputFormat
-        ) { _, _ in
-            // Audio buffers will arrive here.
+        ) { buffer, _ in
+            guard let channelData = buffer.floatChannelData?[0] else {
+                return
+            }
+
+            let frameCount = Int(buffer.frameLength)
+
+            let samples = Array(
+                UnsafeBufferPointer(
+                    start: channelData,
+                    count: frameCount
+                )
+            )
+
+            guard !samples.isEmpty else {
+                return
+            }
+
+            let sumOfSquares = samples.reduce(0) { partialResult, sample in
+                partialResult + sample * sample
+            }
+
+            let rootMeanSquare = sqrt(
+                sumOfSquares / Float(samples.count)
+            )
+
+            guard rootMeanSquare > 0.01 else {
+                return
+            }
+
+            print("Sound level: \(rootMeanSquare)")
         }
         
         audioEngine.prepare()
