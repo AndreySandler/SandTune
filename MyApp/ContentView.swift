@@ -10,6 +10,8 @@ struct GuitarString: Identifiable {
 
 struct ContentView: View {
     @State private var detectedFrequency = 82.41
+    @State private var pitchDetector = PitchDetector()
+    @State private var microphonePermissionGranted = false
     
     // Standard tuning from sixth string to first.
     let guitarStrings = [
@@ -127,6 +129,19 @@ struct ContentView: View {
                     Text("String \(guitarString.number)")
                     Text("\(String(guitarString.frequency)) Hz")
                 }
+            }
+        }.task {
+            microphonePermissionGranted =
+                await pitchDetector.requestMicrophonePermission()
+
+            guard microphonePermissionGranted else {
+                return
+            }
+
+            do {
+                try pitchDetector.start()
+            } catch {
+                print("Failed to start pitch detector: \(error)")
             }
         }
     }
