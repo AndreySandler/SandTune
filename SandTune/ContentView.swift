@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GuitarString: Identifiable {
     let id: Int
@@ -65,6 +66,7 @@ private struct TuningScale: View {
 }
 
 struct ContentView: View {
+    @Environment(\.openURL) private var openURL
     
     // @State private var's
     @State private var pitchDetector = PitchDetector()
@@ -247,6 +249,18 @@ struct ContentView: View {
                     Text("Enable access in Settings to use the tuner.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.6))
+
+                    Button("Open Settings") {
+                        guard let settingsURL = URL(
+                            string: UIApplication.openSettingsURLString
+                        ) else {
+                            return
+                        }
+
+                        openURL(settingsURL)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
                 } else if audioStartFailed {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 44))
