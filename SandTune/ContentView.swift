@@ -12,7 +12,7 @@ struct ContentView: View {
     
     // @State private var's
     @State private var pitchDetector = PitchDetector()
-    @State private var microphonePermissionGranted = false
+    @State private var microphonePermissionGranted: Bool?
     
     // Private var's
     private var detectedFrequency: Double {
@@ -106,7 +106,10 @@ struct ContentView: View {
     
     var body: some View {
         VStack(spacing: 12) {
-            if pitchDetector.isDetectingSound {
+            if microphonePermissionGranted == false {
+                Text("Microphone access is required")
+                Text("Enable access in Settings to use the tuner.")
+            } else if pitchDetector.isDetectingSound {
                 Text("Detected frequency")
 
                 Text(
@@ -126,18 +129,22 @@ struct ContentView: View {
                 Text("Play a string")
             }
             
-            ForEach(guitarStrings) { guitarString in
-                VStack(spacing: 4) {
-                    Text("\(guitarString.note)\(guitarString.octave)")
-                    Text("String \(guitarString.number)")
-                    Text("\(String(guitarString.frequency)) Hz")
+            if microphonePermissionGranted != false {
+                ForEach(guitarStrings) { guitarString in
+                    VStack(spacing: 4) {
+                        Text("\(guitarString.note)\(guitarString.octave)")
+                        Text("String \(guitarString.number)")
+                        Text("\(String(guitarString.frequency)) Hz")
+                    }
                 }
             }
         }.task {
-            microphonePermissionGranted =
+            let permissionGranted =
                 await pitchDetector.requestMicrophonePermission()
 
-            guard microphonePermissionGranted else {
+            microphonePermissionGranted = permissionGranted
+
+            guard permissionGranted else {
                 return
             }
 
