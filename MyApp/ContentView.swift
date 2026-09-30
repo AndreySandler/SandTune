@@ -76,6 +76,7 @@ struct ContentView: View {
         return closestMatch
     }
     
+    // Convertation frequency into music cents.
     private var centsOffset: Double {
         let frequencyRatio = detectedFrequency / closestString.frequency
         return log2(frequencyRatio) * 1200
