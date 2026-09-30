@@ -25,16 +25,30 @@ private struct TuningScale: View {
 
             ZStack {
                 Capsule()
-                    .fill(.secondary.opacity(0.25))
-                    .frame(height: 4)
+                    .fill(.white.opacity(0.18))
+                    .frame(height: 3)
 
-                Rectangle()
-                    .fill(.secondary)
-                    .frame(width: 2, height: 20)
+                HStack {
+                    ForEach(0..<11, id: \.self) { tick in
+                        Rectangle()
+                            .fill(.white.opacity(tick == 5 ? 0.8 : 0.3))
+                            .frame(
+                                width: tick == 5 ? 2 : 1,
+                                height: tick == 5 ? 24 : 10
+                            )
+
+                        if tick < 10 {
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.horizontal, horizontalInset)
 
                 Circle()
                     .fill(color)
-                    .frame(width: 20, height: 20)
+                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                    .shadow(color: color.opacity(0.55), radius: 8)
+                    .frame(width: 22, height: 22)
                     .position(
                         x: markerX,
                         y: geometry.size.height / 2
@@ -183,63 +197,162 @@ struct ContentView: View {
     }
     
     var body: some View {
-        VStack(spacing: 12) {
-            if microphonePermissionGranted == false {
-                Text("Microphone access is required")
-                Text("Enable access in Settings to use the tuner.")
-            } else if pitchDetector.isDetectingSound {
-                Text("Detected frequency")
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.06, blue: 0.10),
+                    Color(red: 0.10, green: 0.08, blue: 0.16)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-                Text("\(closestString.note)\(closestString.octave)")
-                    .font(.system(size: 96, weight: .bold, design: .rounded))
-                    .foregroundStyle(tuningColor)
+            VStack(spacing: 24) {
+                HStack {
+                    Label("SandTune", systemImage: "waveform")
+                        .font(.headline)
+                        .foregroundStyle(.white)
 
-                Text(
-                    "\(String(detectedFrequency)) Hz"
-                )
+                    Spacer()
 
-                Text(
-                    "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
-                )
-                .foregroundStyle(tuningColor)
-
-                TuningScale(
-                    centsOffset: centsOffset,
-                    color: tuningColor
-                )
-                .padding(.horizontal, 32)
-
-                Text(
-                    isCurrentStringConfirmed
-                        ? "String tuned — move on"
-                        : tuningInstruction
-                )
-                .foregroundStyle(tuningColor)
-            } else if let confirmedTunedString {
-                Text("\(confirmedTunedString.note)\(confirmedTunedString.octave)")
-                    .font(.system(size: 96, weight: .bold, design: .rounded))
-                    .foregroundStyle(.green)
-
-                Text("String tuned — move on")
-                    .foregroundStyle(.green)
-            } else {
-                Text("Play a string")
-            }
-            
-            if microphonePermissionGranted != false {
-                HStack(spacing: 8) {
-                    ForEach(guitarStrings) { guitarString in
-                        Text(guitarString.note)
-                            .font(.title2.bold())
-                            .foregroundStyle(
-                                stringColor(for: guitarString)
-                            )
-                            .frame(maxWidth: .infinity)
-                    }
+                    Text("STANDARD")
+                        .font(.caption.weight(.semibold))
+                        .tracking(1.5)
+                        .foregroundStyle(.white.opacity(0.55))
                 }
-                .padding(.horizontal)
+
+                Spacer()
+
+                if microphonePermissionGranted == false {
+                    Image(systemName: "mic.slash.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.orange)
+
+                    Text("Microphone access is required")
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+
+                    Text("Enable access in Settings to use the tuner.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.6))
+                } else if pitchDetector.isDetectingSound {
+                    Text("\(closestString.note)\(closestString.octave)")
+                        .font(
+                            .system(
+                                size: 112,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .foregroundStyle(tuningColor)
+                        .shadow(
+                            color: tuningColor.opacity(0.25),
+                            radius: 24
+                        )
+
+                    Text(
+                        "\(detectedFrequency.formatted(.number.precision(.fractionLength(1)))) Hz"
+                    )
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.6))
+
+                    TuningScale(
+                        centsOffset: centsOffset,
+                        color: tuningColor
+                    )
+
+                    HStack {
+                        Text("−50")
+                        Spacer()
+                        Text(
+                            "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
+                        )
+                        Spacer()
+                        Text("+50")
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.5))
+
+                    Text(
+                        isCurrentStringConfirmed
+                            ? "String tuned — move on"
+                            : tuningInstruction
+                    )
+                    .font(.headline)
+                    .foregroundStyle(tuningColor)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(
+                        tuningColor.opacity(0.12),
+                        in: Capsule()
+                    )
+                } else if let confirmedTunedString {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 42))
+                        .foregroundStyle(.green)
+
+                    Text(
+                        "\(confirmedTunedString.note)\(confirmedTunedString.octave)"
+                    )
+                    .font(
+                        .system(
+                            size: 112,
+                            weight: .bold,
+                            design: .rounded
+                        )
+                    )
+                    .foregroundStyle(.green)
+
+                    Text("String tuned — move on")
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                } else {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.white.opacity(0.35))
+
+                    Text("Play a string")
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                }
+
+                Spacer()
+
+                if microphonePermissionGranted != false {
+                    HStack(spacing: 8) {
+                        ForEach(guitarStrings) { guitarString in
+                            Text(guitarString.note)
+                                .font(.title3.bold())
+                                .foregroundStyle(
+                                    stringColor(for: guitarString)
+                                )
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .background(
+                                    stringColor(for: guitarString)
+                                        .opacity(0.12),
+                                    in: RoundedRectangle(
+                                        cornerRadius: 12,
+                                        style: .continuous
+                                    )
+                                )
+                        }
+                    }
+                    .padding(8)
+                    .background(
+                        .white.opacity(0.06),
+                        in: RoundedRectangle(
+                            cornerRadius: 18,
+                            style: .continuous
+                        )
+                    )
+                }
             }
-        }.task {
+            .padding(24)
+        }
+        .preferredColorScheme(.dark)
+        .task {
             let permissionGranted =
                 await pitchDetector.requestMicrophonePermission()
 
