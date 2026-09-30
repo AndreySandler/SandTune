@@ -13,6 +13,7 @@ struct ContentView: View {
     // @State private var's
     @State private var pitchDetector = PitchDetector()
     @State private var microphonePermissionGranted: Bool?
+    @State private var confirmedTunedStringID: Int?
     
     // Private var's
     private var detectedFrequency: Double {
@@ -103,6 +104,28 @@ struct ContentView: View {
         }
         return "Tune Down"
     }
+
+    private var confirmedTunedString: GuitarString? {
+        guard let confirmedTunedStringID else {
+            return nil
+        }
+
+        return guitarStrings.first {
+            $0.id == confirmedTunedStringID
+        }
+    }
+
+    private var isCurrentStringConfirmed: Bool {
+        confirmedTunedStringID == closestString.id
+    }
+
+    private var tuningColor: Color {
+        if isCurrentStringConfirmed || abs(centsOffset) <= 5 {
+            return .green
+        }
+
+        return .orange
+    }
     
     var body: some View {
         VStack(spacing: 12) {
@@ -112,6 +135,10 @@ struct ContentView: View {
             } else if pitchDetector.isDetectingSound {
                 Text("Detected frequency")
 
+                Text("\(closestString.note)\(closestString.octave)")
+                    .font(.system(size: 96, weight: .bold, design: .rounded))
+                    .foregroundStyle(tuningColor)
+
                 Text(
                     "\(String(detectedFrequency)) Hz"
                 )
@@ -119,12 +146,21 @@ struct ContentView: View {
                 Text(
                     "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
                 )
+                .foregroundStyle(tuningColor)
 
                 Text(
-                    "Closest string is: \(closestString.note)\(closestString.octave)"
+                    isCurrentStringConfirmed
+                        ? "String tuned — move on"
+                        : tuningInstruction
                 )
+                .foregroundStyle(tuningColor)
+            } else if let confirmedTunedString {
+                Text("\(confirmedTunedString.note)\(confirmedTunedString.octave)")
+                    .font(.system(size: 96, weight: .bold, design: .rounded))
+                    .foregroundStyle(.green)
 
-                Text(tuningInstruction)
+                Text("String tuned — move on")
+                    .foregroundStyle(.green)
             } else {
                 Text("Play a string")
             }
@@ -152,6 +188,19 @@ struct ContentView: View {
                 try pitchDetector.start()
             } catch {
                 print("Failed to start pitch detector: \(error)")
+            }
+        }
+        .onChange(of: pitchDetector.detectedFrequency) { _, _ in
+            guard pitchDetector.isDetectingSound else {
+                return
+            }
+
+            if confirmedTunedStringID != closestString.id {
+                confirmedTunedStringID = nil
+            }
+
+            if abs(centsOffset) <= 5 {
+                confirmedTunedStringID = closestString.id
             }
         }
         .onDisappear {
