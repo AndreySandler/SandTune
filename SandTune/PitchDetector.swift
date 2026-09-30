@@ -80,7 +80,9 @@ final class PitchDetector {
                 return
             }
 
-            print("Detected frequency: \(frequency) Hz")
+            Task { @MainActor [weak self] in
+                self?.detectedFrequency = frequency
+            }
         }
         
         audioEngine.prepare()

@@ -9,9 +9,19 @@ struct GuitarString: Identifiable {
 }
 
 struct ContentView: View {
-    @State private var detectedFrequency = 82.41
+    
+    // @State private var's
     @State private var pitchDetector = PitchDetector()
     @State private var microphonePermissionGranted = false
+    
+    // Private var's
+    private var detectedFrequency: Double {
+        if pitchDetector.detectedFrequency > 0 {
+            return pitchDetector.detectedFrequency
+        }
+
+        return 82.41
+    }
     
     // Standard tuning from sixth string to first.
     let guitarStrings = [
@@ -113,15 +123,6 @@ struct ContentView: View {
             )
             
             Text(tuningInstruction)
-            
-            HStack(spacing: 24) {
-                Button("-1 Hz") {
-                    detectedFrequency -= 1
-                }
-                Button("+1 Hz") {
-                    detectedFrequency += 1
-                }
-            }
             
             ForEach(guitarStrings) { guitarString in
                 VStack(spacing: 4) {
