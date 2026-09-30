@@ -76,13 +76,16 @@ struct ContentView: View {
         return closestMatch
     }
     
+    private var centsOffset: Double {
+        let frequencyRatio = detectedFrequency / closestString.frequency
+        return log2(frequencyRatio) * 1200
+    }
+    
     private var tuningInstruction: String {
-        let difference = detectedFrequency - closestString.frequency
-        
-        if abs(difference) < 0.5 {
+        if abs(centsOffset) <= 5 {
             return "In Tune"
         }
-        if difference < 0 {
+        if centsOffset < 0 {
             return "Tune Up"
         }
         return "Tune Down"
@@ -96,6 +99,10 @@ struct ContentView: View {
             
             Text(
                 "\(String(detectedFrequency)) Hz"
+            )
+            
+            Text(
+                "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
             )
             
             Text(
