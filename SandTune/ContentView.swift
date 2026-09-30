@@ -70,6 +70,7 @@ struct ContentView: View {
     @State private var pitchDetector = PitchDetector()
     @State private var microphonePermissionGranted: Bool?
     @State private var confirmedTunedStringID: Int?
+    @State private var audioStartFailed = false
     
     // Private var's
     private var detectedFrequency: Double {
@@ -195,6 +196,16 @@ struct ContentView: View {
 
         return .secondary
     }
+
+    private func startPitchDetector() {
+        do {
+            try pitchDetector.start()
+            audioStartFailed = false
+        } catch {
+            audioStartFailed = true
+            print("Failed to start pitch detector: \(error)")
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -236,6 +247,24 @@ struct ContentView: View {
                     Text("Enable access in Settings to use the tuner.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.6))
+                } else if audioStartFailed {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.orange)
+
+                    Text("Unable to start the microphone")
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+
+                    Text("Check the audio input and try again.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.6))
+
+                    Button("Try Again") {
+                        startPitchDetector()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
                 } else if pitchDetector.isDetectingSound {
                     Text("\(closestString.note)\(closestString.octave)")
                         .font(
@@ -362,11 +391,7 @@ struct ContentView: View {
                 return
             }
 
-            do {
-                try pitchDetector.start()
-            } catch {
-                print("Failed to start pitch detector: \(error)")
-            }
+            startPitchDetector()
         }
         .onChange(of: pitchDetector.detectedFrequency) { _, _ in
             guard pitchDetector.isDetectingSound else {
