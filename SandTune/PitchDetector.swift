@@ -71,7 +71,7 @@ final class PitchDetector {
                 sumOfSquares / Float(samples.count)
             )
             
-            guard rootMeanSquare > 0.01 else {
+            guard rootMeanSquare > 0.001 else {
                 return
             }
             
@@ -187,7 +187,7 @@ final class PitchDetector {
             }
         }
 
-        guard bestLag > 0, bestCorrelation > 0.6 else {
+        guard bestLag > 0, bestCorrelation > 0.45 else {
             return nil
         }
 

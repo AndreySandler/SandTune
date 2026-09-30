@@ -72,6 +72,7 @@ struct ContentView: View {
     @State private var pitchDetector = PitchDetector()
     @State private var microphonePermissionGranted: Bool?
     @State private var confirmedTunedStringID: Int?
+    @State private var selectedStringID = 6
     @State private var audioStartFailed = false
     
     // Private var's
@@ -129,28 +130,16 @@ struct ContentView: View {
         )
     ]
     
-    // Finds the string closest to the detected frequency.
-    private var closestString: GuitarString {
-        var closestMatch = guitarStrings[0]
-        for guitarString in guitarStrings {
-            let currentDifference = abs(
-                guitarString.frequency - detectedFrequency
-            )
-            
-            let closestDifference = abs(
-                closestMatch.frequency - detectedFrequency
-            )
-            
-            if currentDifference < closestDifference {
-                closestMatch = guitarString
-            }
-        }
-        return closestMatch
+    // The string chosen by the user in the bottom selector.
+    private var selectedString: GuitarString {
+        guitarStrings.first {
+            $0.id == selectedStringID
+        } ?? guitarStrings[0]
     }
     
     // Convertation frequency into music cents.
     private var centsOffset: Double {
-        let frequencyRatio = detectedFrequency / closestString.frequency
+        let frequencyRatio = detectedFrequency / selectedString.frequency
         return log2(frequencyRatio) * 1200
     }
     
@@ -175,7 +164,7 @@ struct ContentView: View {
     }
 
     private var isCurrentStringConfirmed: Bool {
-        confirmedTunedStringID == closestString.id
+        confirmedTunedStringID == selectedString.id
     }
 
     private var tuningColor: Color {
@@ -191,9 +180,10 @@ struct ContentView: View {
             return .green
         }
 
-        if pitchDetector.isDetectingSound,
-           closestString.id == guitarString.id {
-            return tuningColor
+        if selectedStringID == guitarString.id {
+            return pitchDetector.isDetectingSound
+                ? tuningColor
+                : .white
         }
 
         return .secondary
@@ -280,7 +270,7 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
                 } else if pitchDetector.isDetectingSound {
-                    Text("\(closestString.note)\(closestString.octave)")
+                    Text("\(selectedString.note)\(selectedString.octave)")
                         .font(
                             .system(
                                 size: 112,
@@ -307,10 +297,6 @@ struct ContentView: View {
 
                     HStack {
                         Text("−50")
-                        Spacer()
-                        Text(
-                            "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
-                        )
                         Spacer()
                         Text("+50")
                     }
@@ -365,21 +351,30 @@ struct ContentView: View {
                 if microphonePermissionGranted != false {
                     HStack(spacing: 8) {
                         ForEach(guitarStrings) { guitarString in
-                            Text(guitarString.note)
-                                .font(.title3.bold())
-                                .foregroundStyle(
-                                    stringColor(for: guitarString)
-                                )
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 48)
-                                .background(
-                                    stringColor(for: guitarString)
-                                        .opacity(0.12),
-                                    in: RoundedRectangle(
-                                        cornerRadius: 12,
-                                        style: .continuous
+                            Button {
+                                selectedStringID = guitarString.id
+                                confirmedTunedStringID = nil
+                            } label: {
+                                Text(guitarString.note)
+                                    .font(.title3.bold())
+                                    .foregroundStyle(
+                                        stringColor(for: guitarString)
                                     )
-                                )
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 48)
+                                    .background(
+                                        stringColor(for: guitarString)
+                                            .opacity(0.12),
+                                        in: RoundedRectangle(
+                                            cornerRadius: 12,
+                                            style: .continuous
+                                        )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                "String \(guitarString.number), \(guitarString.note)"
+                            )
                         }
                     }
                     .padding(8)
@@ -412,12 +407,8 @@ struct ContentView: View {
                 return
             }
 
-            if confirmedTunedStringID != closestString.id {
-                confirmedTunedStringID = nil
-            }
-
             if abs(centsOffset) <= 5 {
-                confirmedTunedStringID = closestString.id
+                confirmedTunedStringID = selectedStringID
             }
         }
         .onDisappear {
