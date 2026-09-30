@@ -81,7 +81,29 @@ final class PitchDetector {
             }
 
             Task { @MainActor [weak self] in
-                self?.detectedFrequency = frequency
+                guard let self else {
+                    return
+                }
+
+                if detectedFrequency == 0 {
+                    detectedFrequency = frequency
+                    return
+                }
+
+                let centsDifference = abs(
+                    1200 * log2(frequency / detectedFrequency)
+                )
+
+                if centsDifference > 50 {
+                    detectedFrequency = frequency
+                    return
+                }
+
+                let smoothingFactor = 0.35
+
+                detectedFrequency =
+                    detectedFrequency * (1 - smoothingFactor)
+                    + frequency * smoothingFactor
             }
         }
         
