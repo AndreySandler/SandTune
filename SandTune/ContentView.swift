@@ -8,6 +8,48 @@ struct GuitarString: Identifiable {
     let frequency: Double
 }
 
+private struct TuningScale: View {
+    let centsOffset: Double
+    let color: Color
+
+    private var clampedOffset: Double {
+        min(max(centsOffset, -50), 50)
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let horizontalInset = 12.0
+            let centerX = geometry.size.width / 2
+            let usableWidth = geometry.size.width - horizontalInset * 2
+            let markerX = centerX + usableWidth * clampedOffset / 100
+
+            ZStack {
+                Capsule()
+                    .fill(.secondary.opacity(0.25))
+                    .frame(height: 4)
+
+                Rectangle()
+                    .fill(.secondary)
+                    .frame(width: 2, height: 20)
+
+                Circle()
+                    .fill(color)
+                    .frame(width: 20, height: 20)
+                    .position(
+                        x: markerX,
+                        y: geometry.size.height / 2
+                    )
+            }
+        }
+        .frame(height: 28)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Tuning offset")
+        .accessibilityValue(
+            "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
+        )
+    }
+}
+
 struct ContentView: View {
     
     // @State private var's
@@ -160,6 +202,12 @@ struct ContentView: View {
                     "\(centsOffset.formatted(.number.precision(.fractionLength(1)))) cents"
                 )
                 .foregroundStyle(tuningColor)
+
+                TuningScale(
+                    centsOffset: centsOffset,
+                    color: tuningColor
+                )
+                .padding(.horizontal, 32)
 
                 Text(
                     isCurrentStringConfirmed
