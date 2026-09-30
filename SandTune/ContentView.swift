@@ -126,6 +126,19 @@ struct ContentView: View {
 
         return .orange
     }
+
+    private func stringColor(for guitarString: GuitarString) -> Color {
+        if confirmedTunedStringID == guitarString.id {
+            return .green
+        }
+
+        if pitchDetector.isDetectingSound,
+           closestString.id == guitarString.id {
+            return tuningColor
+        }
+
+        return .secondary
+    }
     
     var body: some View {
         VStack(spacing: 12) {
@@ -166,13 +179,17 @@ struct ContentView: View {
             }
             
             if microphonePermissionGranted != false {
-                ForEach(guitarStrings) { guitarString in
-                    VStack(spacing: 4) {
-                        Text("\(guitarString.note)\(guitarString.octave)")
-                        Text("String \(guitarString.number)")
-                        Text("\(String(guitarString.frequency)) Hz")
+                HStack(spacing: 8) {
+                    ForEach(guitarStrings) { guitarString in
+                        Text(guitarString.note)
+                            .font(.title2.bold())
+                            .foregroundStyle(
+                                stringColor(for: guitarString)
+                            )
+                            .frame(maxWidth: .infinity)
                     }
                 }
+                .padding(.horizontal)
             }
         }.task {
             let permissionGranted =
