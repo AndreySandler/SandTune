@@ -112,6 +112,9 @@ struct ContentView: View {
     @State private var selectedStringID = 6
     @State private var audioStartFailed = false
     @State private var isShowingTipJar = false
+#if DEBUG
+    @State private var isShowingDiagnosticRecorder = false
+#endif
     @State private var tuningConfirmationTask: Task<Void, Never>?
     @State private var lastCentsOffset = 0.0
     @State private var isVisuallyInTune = false
@@ -220,6 +223,7 @@ struct ContentView: View {
 
     private func startPitchDetector() {
         do {
+            pitchDetector.selectExpectedFrequency(selectedString.frequency)
             try pitchDetector.start()
             audioStartFailed = false
         } catch {
@@ -319,6 +323,19 @@ struct ContentView: View {
                         .foregroundStyle(.white)
 
                     Spacer()
+
+#if DEBUG
+                    Button {
+                        isShowingDiagnosticRecorder = true
+                    } label: {
+                        Image(systemName: "waveform.badge.mic")
+                            .foregroundStyle(.white.opacity(0.75))
+                            .frame(width: 36, height: 36)
+                            .background(.white.opacity(0.08), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Record diagnostic audio samples")
+#endif
 
                     Button {
                         isShowingTipJar = true
@@ -447,8 +464,10 @@ struct ContentView: View {
                         ForEach(guitarStrings) { guitarString in
                             Button {
                                 cancelTuningConfirmation()
-                                pitchDetector.resetTracking()
                                 selectedStringID = guitarString.id
+                                pitchDetector.selectExpectedFrequency(
+                                    guitarString.frequency
+                                )
                                 lastCentsOffset = 0
                                 isVisuallyInTune = false
                                 lastTuningFeedback = .playString
@@ -501,6 +520,15 @@ struct ContentView: View {
         .sheet(isPresented: $isShowingTipJar) {
             TipJarView()
         }
+#if DEBUG
+        .sheet(isPresented: $isShowingDiagnosticRecorder) {
+            DiagnosticRecorderView(
+                pitchDetector: pitchDetector,
+                guitarStrings: guitarStrings,
+                selectedStringID: selectedStringID
+            )
+        }
+#endif
         .task {
             let permissionGranted =
                 await pitchDetector.requestMicrophonePermission()

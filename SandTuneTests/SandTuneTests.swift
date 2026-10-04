@@ -76,6 +76,24 @@ struct SandTuneTests {
         #expect(centsBetween(detectedFrequency, frequency) < 3)
     }
 
+    @Test("Corrects a subharmonic for the selected string")
+    func correctsSubharmonicForSelectedString() throws {
+        let detectedSubharmonic = 97.7
+        let samples = makeSineWave(
+            frequency: detectedSubharmonic,
+            amplitude: 0.2
+        )
+        let detectedFrequency = try #require(
+            analyzer.estimateFrequency(
+                from: samples,
+                sampleRate: sampleRate,
+                expectedFrequency: 196
+            )
+        )
+
+        #expect(centsBetween(detectedFrequency, 195.4) < 3)
+    }
+
     private func makeSineWave(
         frequency: Double,
         amplitude: Double

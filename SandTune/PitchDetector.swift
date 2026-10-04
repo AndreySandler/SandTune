@@ -8,6 +8,40 @@
 import AVFoundation
 import Observation
 
+private final class AudioSampleWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var audioFile: AVAudioFile?
+
+    func startWriting(to url: URL, settings: [String: Any]) throws {
+        let file = try AVAudioFile(
+            forWriting: url,
+            settings: settings
+        )
+
+        lock.lock()
+        audioFile = file
+        lock.unlock()
+    }
+
+    func write(_ buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        do {
+            try audioFile?.write(from: buffer)
+        } catch {
+            // A failed diagnostic write must not interrupt pitch detection.
+            audioFile = nil
+        }
+    }
+
+    func stopWriting() {
+        lock.lock()
+        audioFile = nil
+        lock.unlock()
+    }
+}
+
 private final class NoiseFloorTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var estimatedNoiseFloor: Float = 0.00003
@@ -25,7 +59,7 @@ private final class NoiseFloorTracker: @unchecked Sendable {
         // Stay sensitive in quiet rooms, but rise above steady background
         // noise. The upper limit prevents a noisy moment from deafening the
         // tuner for subsequent quiet notes.
-        return min(max(estimatedNoiseFloor * 2, 0.00005), 0.001)
+        return min(max(estimatedNoiseFloor * 2, 0.00005), 0.0003)
     }
 
     func observeNoise(rootMeanSquare: Float) {
@@ -42,14 +76,36 @@ private final class NoiseFloorTracker: @unchecked Sendable {
     }
 }
 
+private final class ExpectedFrequencyStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var frequency = 82.41
+
+    func update(_ newFrequency: Double) {
+        lock.lock()
+        frequency = newFrequency
+        lock.unlock()
+    }
+
+    func current() -> Double {
+        lock.lock()
+        defer { lock.unlock() }
+        return frequency
+    }
+}
+
 @Observable
 final class PitchDetector {
     private let audioEngine = AVAudioEngine()
     private let noiseFloorTracker = NoiseFloorTracker()
     private let pitchAnalyzer = PitchAnalyzer()
+    private let sampleWriter = AudioSampleWriter()
+    private let expectedFrequencyStore = ExpectedFrequencyStore()
     private var silenceTask: Task<Void, Never>?
+    private var recordingSettings: [String: Any]?
     private(set) var detectedFrequency = 0.0
     private(set) var isDetectingSound = false
+    private(set) var isRecordingSample = false
+    private(set) var latestSampleURL: URL?
     
     func requestMicrophonePermission() async -> Bool {
         await AVAudioApplication.requestRecordPermission()
@@ -77,12 +133,15 @@ final class PitchDetector {
         let inputNode = audioEngine.inputNode
         let outputFormat = inputNode.outputFormat(forBus: 0)
         let sampleRate = outputFormat.sampleRate
+        recordingSettings = outputFormat.settings
         
         inputNode.installTap(
             onBus: 0,
             bufferSize: 4096,
             format: outputFormat
         ) { [weak self] buffer, _ in
+            self?.sampleWriter.write(buffer)
+
             guard let channelData = buffer.floatChannelData?[0] else {
                 return
             }
@@ -120,7 +179,8 @@ final class PitchDetector {
             
             guard let frequency = self?.pitchAnalyzer.estimateFrequency(
                 from: samples,
-                sampleRate: sampleRate
+                sampleRate: sampleRate,
+                expectedFrequency: self?.expectedFrequencyStore.current()
             ) else {
                 self?.noiseFloorTracker.observeNoise(
                     rootMeanSquare: rootMeanSquare
@@ -155,6 +215,7 @@ final class PitchDetector {
     }
     
     func stop() {
+        stopSampleRecording()
         resetTracking()
 
         guard audioEngine.isRunning else {
@@ -165,11 +226,54 @@ final class PitchDetector {
         audioEngine.inputNode.removeTap(onBus: 0)
     }
 
+    func startSampleRecording(label: String) throws {
+        guard audioEngine.isRunning,
+              let recordingSettings else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+
+        let documentsDirectory = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let timestamp = Date.now.formatted(
+            .iso8601
+                .year()
+                .month()
+                .day()
+                .time(includingFractionalSeconds: false)
+                .timeZone(separator: .omitted)
+        )
+        .replacingOccurrences(of: ":", with: "-")
+        let fileURL = documentsDirectory
+            .appendingPathComponent("SandTune_\(label)_\(timestamp)")
+            .appendingPathExtension("caf")
+
+        try sampleWriter.startWriting(
+            to: fileURL,
+            settings: recordingSettings
+        )
+        latestSampleURL = fileURL
+        isRecordingSample = true
+    }
+
+    func stopSampleRecording() {
+        sampleWriter.stopWriting()
+        isRecordingSample = false
+    }
+
     func resetTracking() {
         silenceTask?.cancel()
         silenceTask = nil
         isDetectingSound = false
         detectedFrequency = 0
+    }
+
+    func selectExpectedFrequency(_ frequency: Double) {
+        expectedFrequencyStore.update(frequency)
+        resetTracking()
     }
     
 }

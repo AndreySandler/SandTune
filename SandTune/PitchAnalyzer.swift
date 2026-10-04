@@ -3,7 +3,8 @@ import Foundation
 struct PitchAnalyzer: Sendable {
     func estimateFrequency(
         from samples: [Float],
-        sampleRate: Double
+        sampleRate: Double,
+        expectedFrequency: Double? = nil
     ) -> Double? {
         let minimumFrequency = 70.0
         let maximumFrequency = 400.0
@@ -94,6 +95,25 @@ struct PitchAnalyzer: Sendable {
             }
         }
 
-        return sampleRate / refinedLag
+        let detectedFrequency = sampleRate / refinedLag
+
+        guard let expectedFrequency else {
+            return detectedFrequency
+        }
+
+        // YIN can occasionally lock onto a subharmonic and report exactly
+        // half of a guitar string's pitch. Prefer the octave candidate closest
+        // to the string selected by the user, without rejecting other notes.
+        let octaveCandidates = [
+            detectedFrequency / 2,
+            detectedFrequency,
+            detectedFrequency * 2
+        ]
+        .filter { $0 >= minimumFrequency && $0 <= maximumFrequency }
+
+        return octaveCandidates.min { first, second in
+            abs(log2(first / expectedFrequency))
+                < abs(log2(second / expectedFrequency))
+        } ?? detectedFrequency
     }
 }
