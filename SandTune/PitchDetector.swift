@@ -8,9 +8,44 @@
 import AVFoundation
 import Observation
 
+private final class NoiseFloorTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var estimatedNoiseFloor: Float = 0.00003
+
+    func reset() {
+        lock.lock()
+        estimatedNoiseFloor = 0.00003
+        lock.unlock()
+    }
+
+    func currentThreshold() -> Float {
+        lock.lock()
+        defer { lock.unlock() }
+
+        // Stay sensitive in quiet rooms, but rise above steady background
+        // noise. The upper limit prevents a noisy moment from deafening the
+        // tuner for subsequent quiet notes.
+        return min(max(estimatedNoiseFloor * 2, 0.00005), 0.001)
+    }
+
+    func observeNoise(rootMeanSquare: Float) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sample = min(rootMeanSquare, 0.005)
+        let smoothingFactor: Float = sample > estimatedNoiseFloor
+            ? 0.02
+            : 0.15
+
+        estimatedNoiseFloor +=
+            (sample - estimatedNoiseFloor) * smoothingFactor
+    }
+}
+
 @Observable
 final class PitchDetector {
     private let audioEngine = AVAudioEngine()
+    private let noiseFloorTracker = NoiseFloorTracker()
     private var silenceTask: Task<Void, Never>?
     private(set) var detectedFrequency = 0.0
     private(set) var isDetectingSound = false
@@ -36,6 +71,7 @@ final class PitchDetector {
         }
         
         try configureAudioSession()
+        noiseFloorTracker.reset()
         
         let inputNode = audioEngine.inputNode
         let outputFormat = inputNode.outputFormat(forBus: 0)
@@ -71,9 +107,13 @@ final class PitchDetector {
                 sumOfSquares / Float(samples.count)
             )
             
-            // Ignore quiet room noise so the UI does not report a wrong string
-            // when the instrument is not being played.
-            guard rootMeanSquare > 0.001 else {
+            let signalThreshold = self?.noiseFloorTracker.currentThreshold()
+                ?? 0.0002
+
+            guard rootMeanSquare > signalThreshold else {
+                self?.noiseFloorTracker.observeNoise(
+                    rootMeanSquare: rootMeanSquare
+                )
                 return
             }
             
@@ -81,6 +121,9 @@ final class PitchDetector {
                 from: samples,
                 sampleRate: sampleRate
             ) else {
+                self?.noiseFloorTracker.observeNoise(
+                    rootMeanSquare: rootMeanSquare
+                )
                 return
             }
 
@@ -89,6 +132,7 @@ final class PitchDetector {
                     return
                 }
 
+                detectedFrequency = frequency
                 isDetectingSound = true
                 silenceTask?.cancel()
                 silenceTask = Task { @MainActor [weak self] in
@@ -102,20 +146,6 @@ final class PitchDetector {
                     self?.detectedFrequency = 0
                 }
 
-                if detectedFrequency == 0 {
-                    detectedFrequency = frequency
-                    return
-                }
-
-                // Smooth in the logarithmic pitch domain so movement in cents
-                // stays even across the guitar's full frequency range.
-                let smoothingFactor = 0.18
-                let frequencyRatio = frequency / detectedFrequency
-
-                detectedFrequency *= pow(
-                    frequencyRatio,
-                    smoothingFactor
-                )
             }
         }
         
@@ -124,9 +154,7 @@ final class PitchDetector {
     }
     
     func stop() {
-        silenceTask?.cancel()
-        silenceTask = nil
-        isDetectingSound = false
+        resetTracking()
 
         guard audioEngine.isRunning else {
             return
@@ -134,6 +162,13 @@ final class PitchDetector {
 
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
+    }
+
+    func resetTracking() {
+        silenceTask?.cancel()
+        silenceTask = nil
+        isDetectingSound = false
+        detectedFrequency = 0
     }
     
     private nonisolated func estimateFrequency(

@@ -9,6 +9,40 @@ struct GuitarString: Identifiable {
     let frequency: Double
 }
 
+private enum TuningFeedback: Equatable {
+    case playString
+    case tuneUp
+    case tuneDown
+    case holdSteady
+    case tuned
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .playString:
+            "Play a String"
+        case .tuneUp:
+            "Tune Up"
+        case .tuneDown:
+            "Tune Down"
+        case .holdSteady:
+            "Hold Steady"
+        case .tuned:
+            "String Tuned"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .playString:
+            .white.opacity(0.45)
+        case .tuneUp, .tuneDown:
+            .orange
+        case .holdSteady, .tuned:
+            .green
+        }
+    }
+}
+
 private struct TuningScale: View {
     let centsOffset: Double
     let color: Color
@@ -56,10 +90,6 @@ private struct TuningScale: View {
                             x: markerX,
                             y: geometry.size.height / 2
                         )
-                        .animation(
-                            .smooth(duration: 0.18),
-                            value: clampedOffset
-                        )
                 }
             }
         }
@@ -82,6 +112,10 @@ struct ContentView: View {
     @State private var selectedStringID = 6
     @State private var audioStartFailed = false
     @State private var isShowingTipJar = false
+    @State private var tuningConfirmationTask: Task<Void, Never>?
+    @State private var lastCentsOffset = 0.0
+    @State private var isVisuallyInTune = false
+    @State private var lastTuningFeedback = TuningFeedback.playString
     
     // Private var's
     private var detectedFrequency: Double {
@@ -151,22 +185,23 @@ struct ContentView: View {
         return log2(frequencyRatio) * 1200
     }
     
-    private var tuningInstruction: String {
-        if abs(centsOffset) <= 5 {
-            return "In Tune"
+    private var tuningFeedback: TuningFeedback {
+        if tunedStringIDs.contains(selectedStringID),
+           isVisuallyInTune {
+            return .tuned
+        }
+
+        if isVisuallyInTune {
+            return .holdSteady
         }
         if centsOffset < 0 {
-            return "Tune Up"
+            return .tuneUp
         }
-        return "Tune Down"
+        return .tuneDown
     }
 
     private var tuningColor: Color {
-        if abs(centsOffset) <= 5 {
-            return .green
-        }
-
-        return .orange
+        tuningFeedback.color
     }
 
     private func stringColor(for guitarString: GuitarString) -> Color {
@@ -177,7 +212,7 @@ struct ContentView: View {
         if selectedStringID == guitarString.id {
             return pitchDetector.isDetectingSound
                 ? tuningColor
-                : .white
+                : .white.opacity(0.55)
         }
 
         return .secondary
@@ -191,6 +226,78 @@ struct ContentView: View {
             audioStartFailed = true
             print("Failed to start pitch detector: \(error)")
         }
+    }
+
+    private func cancelTuningConfirmation() {
+        tuningConfirmationTask?.cancel()
+        tuningConfirmationTask = nil
+    }
+
+    private func updateTuningConfirmation() {
+        guard pitchDetector.isDetectingSound,
+              !tunedStringIDs.contains(selectedStringID) else {
+            cancelTuningConfirmation()
+            return
+        }
+
+        let absoluteOffset = abs(centsOffset)
+
+        if tuningConfirmationTask != nil {
+            // A small amount of movement is expected while a string rings out.
+            if absoluteOffset > 8 {
+                cancelTuningConfirmation()
+            }
+
+            return
+        }
+
+        guard absoluteOffset <= 5 else {
+            return
+        }
+
+        let candidateStringID = selectedStringID
+
+        tuningConfirmationTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(800))
+            } catch {
+                return
+            }
+
+            defer {
+                tuningConfirmationTask = nil
+            }
+
+            guard selectedStringID == candidateStringID,
+                  pitchDetector.isDetectingSound,
+                  abs(centsOffset) <= 8 else {
+                return
+            }
+
+            tunedStringIDs.insert(candidateStringID)
+            lastTuningFeedback = .tuned
+        }
+    }
+
+    private func updateTunerDisplay() {
+        guard pitchDetector.isDetectingSound else {
+            isVisuallyInTune = false
+            cancelTuningConfirmation()
+            return
+        }
+
+        lastCentsOffset = centsOffset
+        let absoluteOffset = abs(centsOffset)
+
+        if isVisuallyInTune {
+            // Keep the green state through tiny pitch fluctuations.
+            isVisuallyInTune = absoluteOffset <= 10
+        } else {
+            isVisuallyInTune = absoluteOffset <= 7
+        }
+
+        lastTuningFeedback = tuningFeedback
+        updateTuningConfirmation()
     }
     
     var body: some View {
@@ -289,27 +396,13 @@ struct ContentView: View {
                             radius: 24
                         )
 
-                    Text(
-                        "\(detectedFrequency.formatted(.number.precision(.fractionLength(1)))) Hz"
-                    )
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.6))
-
                     TuningScale(
                         centsOffset: centsOffset,
                         color: tuningColor,
                         showsMarker: true
                     )
 
-                    HStack {
-                        Text("−50")
-                        Spacer()
-                        Text("+50")
-                    }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.5))
-
-                    Text(tuningInstruction)
+                    Text(tuningFeedback.title)
                         .font(.headline)
                         .foregroundStyle(tuningColor)
                         .padding(.horizontal, 18)
@@ -327,21 +420,24 @@ struct ContentView: View {
                                 design: .rounded
                             )
                         )
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.white.opacity(0.65))
 
                     TuningScale(
-                        centsOffset: 0,
-                        color: .white,
-                        showsMarker: false
+                        centsOffset: lastCentsOffset,
+                        color: .white.opacity(0.55),
+                        showsMarker: true
                     )
 
-                    HStack {
-                        Text("−50")
-                        Spacer()
-                        Text("+50")
-                    }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.5))
+                    Text(lastTuningFeedback.title)
+                        .font(.headline)
+                        .foregroundStyle(lastTuningFeedback.color)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(
+                            lastTuningFeedback.color.opacity(0.12),
+                            in: Capsule()
+                        )
+
                 }
 
                 Spacer()
@@ -350,7 +446,12 @@ struct ContentView: View {
                     HStack(spacing: 8) {
                         ForEach(guitarStrings) { guitarString in
                             Button {
+                                cancelTuningConfirmation()
+                                pitchDetector.resetTracking()
                                 selectedStringID = guitarString.id
+                                lastCentsOffset = 0
+                                isVisuallyInTune = false
+                                lastTuningFeedback = .playString
                             } label: {
                                 VStack(spacing: 2) {
                                     Text(guitarString.note)
@@ -413,15 +514,10 @@ struct ContentView: View {
             startPitchDetector()
         }
         .onChange(of: pitchDetector.detectedFrequency) { _, _ in
-            guard pitchDetector.isDetectingSound else {
-                return
-            }
-
-            if abs(centsOffset) <= 5 {
-                tunedStringIDs.insert(selectedStringID)
-            }
+            updateTunerDisplay()
         }
         .onDisappear {
+            cancelTuningConfirmation()
             pitchDetector.stop()
         }
     }
